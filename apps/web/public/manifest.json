@@ -1,0 +1,42 @@
+{
+  "name": "Zeeshu Weather Alert",
+  "short_name": "Zeeshu Weather",
+  "description": "Premium real-time weather, radar, AQI, lightning and severe alert platform.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#061225",
+  "theme_color": "#061225",
+  "categories": ["weather", "utilities"],
+  "lang": "en",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%23061225'/%3E%3Cpath d='M96 40 L116 85 H140 L120 110 L130 155 L96 130 L62 155 L72 110 L52 85 H76 Z' fill='%2339c2ff' stroke='%2345f0c2' stroke-width='3'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='100' fill='%23061225'/%3E%3Cpath d='M256 80 L310 200 H390 L325 275 L350 400 L256 330 L162 400 L187 275 L122 200 H202 Z' fill='%2339c2ff' stroke='%2345f0c2' stroke-width='6'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Live Weather",
+      "short_name": "Weather",
+      "description": "Check current weather",
+      "url": "/",
+      "icons": []
+    },
+    {
+      "name": "Severe Alerts",
+      "short_name": "Alerts",
+      "description": "View severe weather alerts",
+      "url": "/#alerts",
+      "icons": []
+    }
+  ]
+}

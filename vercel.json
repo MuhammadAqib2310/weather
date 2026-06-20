@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "buildCommand": "npm --workspace apps/web run build",
+  "outputDirectory": "apps/web/.next",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://your-railway-api-url.railway.app/api/:path*"
+    }
+  ]
+}

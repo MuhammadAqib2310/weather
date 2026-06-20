@@ -1,0 +1,35 @@
+﻿import compression from "compression";
+import cors from "cors";
+import express from "express";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
+import morgan from "morgan";
+import { env } from "./config/env.js";
+import { adminRouter } from "./routes/admin.js";
+import { alertsRouter } from "./routes/alerts.js";
+import { communityRouter } from "./routes/community.js";
+import { locationsRouter } from "./routes/locations.js";
+import { weatherRouter } from "./routes/weather.js";
+
+const app = express();
+
+app.use(helmet());
+app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
+app.use(express.json({ limit: "1mb" }));
+app.use(compression());
+app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(rateLimit({ windowMs: 60_000, limit: 120 }));
+
+app.get("/api/health", (_req, res) => res.json({ ok: true, app: "Zeeshu Weather Alert", time: new Date().toISOString() }));
+app.use("/api/weather", weatherRouter);
+app.use("/api/alerts", alertsRouter);
+app.use("/api/community", communityRouter);
+app.use("/api/locations", locationsRouter);
+app.use("/api/admin", adminRouter);
+
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err);
+  res.status(500).json({ error: err.message || "Internal server error" });
+});
+
+app.listen(env.PORT, () => console.log(`Zeeshu Weather Alert API running on http://localhost:${env.PORT}/api`));
