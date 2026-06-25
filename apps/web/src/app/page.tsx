@@ -11,394 +11,408 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { fetchAqi, fetchWeather, searchCities, type CitySearchResult, type WeatherResponse } from "@/lib/api";
 import { useWeatherStore } from "@/store/weather-store";
 
-/* ─── Helper ─── */
+/* ── helpers ── */
 function toF(c: number) { return Math.round(c * 9 / 5 + 32); }
-function fmt(val: number, unit: "C" | "F") { return unit === "F" ? `${toF(val)}°F` : `${Math.round(val)}°C`; }
+function fmt(v: number, u: "C" | "F") { return u === "F" ? `${toF(v)}°F` : `${Math.round(v)}°C`; }
 
-/* ─── Demo fallback ─── */
-const demoWeather: WeatherResponse = {
-  city: "Lahore", country: "PK",
-  current: { temp: 31, condition: "Thunderstorms", feelsLike: 34, humidity: 62, wind: 18, pressure: 1008, visibility: 9600, uv: 7, sunrise: "05:02 AM", sunset: "07:12 PM", min: 27, max: 36 },
-  hourly: Array.from({ length: 12 }, (_, i) => ({ hour: i + 8, temp: 27 + ((i * 2) % 9), rain: 18 + ((i * 9) % 70), humidity: 55 + ((i * 4) % 30), wind: 9 + ((i * 3) % 18) })),
-  daily: ["Today","Fri","Sat","Sun","Mon","Tue","Wed"].map((day, i) => ({ day, high: 32 + (i % 5), low: 23 + (i % 4), condition: i % 2 ? "Partly cloudy" : "Storm risk", rain: i % 2 ? 24 : 68 })),
+/* ── weather emoji map ── */
+const WX: Record<string, string> = {
+  "clear": "☀️", "mainly clear": "🌤️", "partly cloudy": "⛅", "overcast": "☁️",
+  "fog": "🌫️", "drizzle": "🌦️", "rain": "🌧️", "snow": "❄️", "shower": "🌧️",
+  "thunderstorm": "⛈️", "hail": "🌨️", "storm": "⛈️", "icy": "🌫️", "grains": "🌨️",
 };
-
-/* ─── World city chips by region ─── */
-const worldCities = [
-  { name: "Lahore", flag: "🇵🇰" }, { name: "Karachi", flag: "🇵🇰" }, { name: "Islamabad", flag: "🇵🇰" },
-  { name: "Dubai", flag: "🇦🇪" }, { name: "London", flag: "🇬🇧" }, { name: "New York", flag: "🇺🇸" },
-  { name: "Tokyo", flag: "🇯🇵" }, { name: "Paris", flag: "🇫🇷" }, { name: "Istanbul", flag: "🇹🇷" },
-  { name: "Riyadh", flag: "🇸🇦" }, { name: "Mumbai", flag: "🇮🇳" }, { name: "Sydney", flag: "🇦🇺" },
-];
-
-/* ─── Weather icon map ─── */
-const conditionIcon: Record<string, string> = {
-  thunderstorm: "⛈️", drizzle: "🌦️", rain: "🌧️", snow: "❄️",
-  mist: "🌫️", fog: "🌫️", haze: "🌫️", smoke: "🌫️", dust: "🌪️",
-  tornado: "🌪️", clear: "☀️", clouds: "☁️", "partly cloudy": "⛅",
-  "storm risk": "⛈️",
-};
-function weatherIcon(condition: string): string {
-  const lc = condition.toLowerCase();
-  for (const [key, emoji] of Object.entries(conditionIcon)) {
-    if (lc.includes(key)) return emoji;
-  }
+function wxEmoji(cond: string): string {
+  const lc = cond.toLowerCase();
+  for (const [k, v] of Object.entries(WX)) if (lc.includes(k)) return v;
   return "🌡️";
 }
 
-const navFeatures = ["Forecast", "AQI", "Alerts", "Community", "Admin"];
-const demoAlerts = [
-  { title: "Thunderstorm Warning", body: "High-energy cell approaching the selected region.", severity: "critical" },
-  { title: "Flood Watch", body: "Low lying roads may collect water during peak rain.", severity: "warning" },
-  { title: "Heat Advisory", body: "Avoid prolonged sun exposure during afternoon hours.", severity: "watch" },
-];
-const demoPosts = [
-  { title: "Rain bands reported near DHA", place: "Lahore", likes: 42 },
-  { title: "Dusty wind and low visibility", place: "Multan", likes: 31 },
-  { title: "Clear sunset after scattered clouds", place: "Karachi", likes: 55 },
-];
-
-/* ─── Labels ─── */
-const labels = {
-  en: { title: "Zeeshu Weather Alert", subtitle: "Real-time weather, radar, AQI & severe alerts for every city worldwide.", search: "Search any city or country…", current: "Current Weather", forecast: "Hourly Forecast", week: "7-Day Outlook", alerts: "Severe Weather Alerts", community: "Community Reports", admin: "Operations", feelsLike: "Feels like", humidity: "Humidity", wind: "Wind", pressure: "Pressure", visibility: "Visibility", uv: "UV Index", sunset: "Sunset", minMax: "Min / Max" },
-  ur: { title: "زیشو ویدر الرٹ", subtitle: "دنیا کے ہر شہر کے لیے ریئل ٹائم موسم، ریڈار، AQI اور شدید الرٹس۔", search: "کوئی بھی شہر یا ملک تلاش کریں…", current: "موجودہ موسم", forecast: "گھنٹہ وار پیشگوئی", week: "7 دن کا جائزہ", alerts: "شدید موسم الرٹس", community: "کمیونٹی رپورٹس", admin: "آپریشنز", feelsLike: "محسوس درجہ حرارت", humidity: "نمی", wind: "ہوا", pressure: "دباؤ", visibility: "مرئیت", uv: "UV", sunset: "غروب", minMax: "کم / زیادہ" },
+/* ── demo fallback ── */
+const DEMO: WeatherResponse = {
+  city: "Lahore", country: "PK",
+  current: { temp: 31, condition: "Clear sky", feelsLike: 34, humidity: 58, wind: 14, pressure: 1010, visibility: 12000, uv: 6, sunrise: "05:12 AM", sunset: "07:08 PM", min: 26, max: 36 },
+  hourly: Array.from({length:12},(_,i)=>({ hour:i+8, temp:27+((i*2)%9), rain:12+((i*7)%55), humidity:50+((i*4)%28), wind:8+((i*3)%16) })),
+  daily: ["Today","Fri","Sat","Sun","Mon","Tue","Wed"].map((day,i)=>({ day, high:32+(i%5), low:22+(i%4), condition:["Clear sky","Partly cloudy","Rain","Thunderstorm","Clear sky","Overcast","Rain"][i], rain:[5,22,70,85,8,35,60][i] })),
 };
 
-/* ─── ShellCard ─── */
-function ShellCard({ children, className = "", id }: { children: React.ReactNode; className?: string; id?: string }) {
-  return <section id={id} className={`glass shine rounded-3xl p-5 ${className}`}>{children}</section>;
+/* ── world cities ── */
+const CITIES = [
+  {name:"Lahore",flag:"🇵🇰"},{name:"Karachi",flag:"🇵🇰"},{name:"Islamabad",flag:"🇵🇰"},
+  {name:"Dubai",flag:"🇦🇪"},{name:"London",flag:"🇬🇧"},{name:"New York",flag:"🇺🇸"},
+  {name:"Tokyo",flag:"🇯🇵"},{name:"Paris",flag:"🇫🇷"},{name:"Istanbul",flag:"🇹🇷"},
+  {name:"Sydney",flag:"🇦🇺"},{name:"Riyadh",flag:"🇸🇦"},{name:"Mumbai",flag:"🇮🇳"},
+];
+
+const NAV = ["Forecast","AQI","Alerts","Community","Admin"];
+
+const L = {
+  en:{ title:"Zeeshu Weather Alert", sub:"Real-time weather for every city worldwide — powered by Open-Meteo.", search:"Search any city or country…", current:"Current Weather", forecast:"Hourly Forecast", week:"7-Day Outlook", alerts:"Severe Alerts", community:"Community", admin:"Operations", feelsLike:"Feels like", humidity:"Humidity", wind:"Wind", pressure:"Pressure", visibility:"Visibility", uv:"UV Index", sunset:"Sunset", minMax:"Min / Max" },
+  ur:{ title:"زیشو ویدر الرٹ", sub:"دنیا کے ہر شہر کے لیے ریئل ٹائم موسم۔", search:"شہر یا ملک تلاش کریں…", current:"موجودہ موسم", forecast:"گھنٹہ وار", week:"7 دن", alerts:"شدید الرٹس", community:"کمیونٹی", admin:"آپریشنز", feelsLike:"محسوس", humidity:"نمی", wind:"ہوا", pressure:"دباؤ", visibility:"مرئیت", uv:"UV", sunset:"غروب", minMax:"کم/زیادہ" },
+};
+
+/* ── components ── */
+function Card({ children, className="", id }: { children: React.ReactNode; className?: string; id?: string }) {
+  return <section id={id} className={`glass shine rounded-2xl p-5 ${className}`}>{children}</section>;
 }
 
-/* ─── Metric card ─── */
-function Metric({ icon: Icon, label, value, tone = "text-sky-100" }: { icon: React.ElementType; label: string; value: string; tone?: string }) {
+function Stat({ icon: Icon, label, value, color="text-sky-300" }: { icon: React.ElementType; label: string; value: string; color?: string }) {
   return (
-    <div className="group rounded-2xl border border-white/10 bg-white/6 p-4 transition hover:-translate-y-1 hover:bg-white/10">
+    <div className="group rounded-xl border border-white/8 bg-white/[0.04] p-4 transition hover:-translate-y-1 hover:border-sky-400/20 hover:bg-white/[0.07]">
       <div className="mb-3 flex items-center justify-between">
-        <div className="grid size-10 place-items-center rounded-xl bg-white/10"><Icon className={tone} size={20} /></div>
-        <span className="flex items-center gap-1.5 rounded-full bg-emerald-300/10 px-2 py-1 text-xs text-emerald-200"><span className="status-dot" />Live</span>
+        <div className={`grid size-9 place-items-center rounded-lg bg-white/8`}><Icon className={color} size={18} /></div>
+        <span className="flex items-center gap-1 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] text-emerald-300"><span className="status-dot" />Live</span>
       </div>
-      <p className="text-xs text-sky-100/55">{label}</p>
-      <p className="mt-1 text-xl font-semibold">{value}</p>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full w-2/3 rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 transition-all duration-500 group-hover:w-5/6" />
-      </div>
+      <p className="text-xs text-white/45">{label}</p>
+      <p className="mt-1 text-lg font-bold">{value}</p>
     </div>
   );
 }
 
-/* ─── Skeleton ─── */
-function Skeleton() {
-  return <div className="glass rounded-3xl p-5"><div className="skeleton mb-3 h-6 w-1/3" /><div className="skeleton mb-2 h-16 w-full" /><div className="skeleton h-4 w-2/3" /></div>;
-}
-
-/* ─── Main page ─── */
 export default function Home() {
   const { city, setCity, theme, toggleTheme, language, toggleLanguage, tempUnit, toggleTempUnit, addFavorite, removeFavorite, isFavorite, addRecentSearch, recentSearches } = useWeatherStore();
   const [query, setQuery] = useState(city);
-  const [suggestions, setSuggestions] = useState<CitySearchResult[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [weather, setWeather] = useState<WeatherResponse>(demoWeather);
-  const [aqi, setAqi] = useState({ score: 86, category: "Moderate", pm25: 31, pm10: 74, co: 0.8, no2: 24, o3: 42, recommendation: "Sensitive groups should reduce prolonged outdoor activity." });
-  const [isLoading, setIsLoading] = useState(false);
-  const [status, setStatus] = useState("Demo data — add OpenWeather API key for live data");
+  const [sugg, setSugg] = useState<CitySearchResult[]>([]);
+  const [showSugg, setShowSugg] = useState(false);
+  const [weather, setWeather] = useState<WeatherResponse>(DEMO);
+  const [aqi, setAqi] = useState({ score: 0, category: "—", pm25: 0, pm10: 0, co: 0, no2: 0, o3: 0, recommendation: "Loading air quality data…" });
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("Click a city or search to load live weather");
   const [isLive, setIsLive] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const t = labels[language];
+  const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const t = L[language];
 
-  // Autocomplete search
-  const handleQueryChange = useCallback((val: string) => {
+  const onQueryChange = useCallback((val: string) => {
     setQuery(val);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (val.trim().length < 2) { setSuggestions([]); setShowSuggestions(false); return; }
-    debounceRef.current = setTimeout(async () => {
-      const results = await searchCities(val);
-      setSuggestions(results);
-      setShowSuggestions(results.length > 0);
-    }, 350);
+    if (debRef.current) clearTimeout(debRef.current);
+    if (val.trim().length < 2) { setSugg([]); setShowSugg(false); return; }
+    debRef.current = setTimeout(async () => {
+      const r = await searchCities(val);
+      setSugg(r); setShowSugg(r.length > 0);
+    }, 300);
   }, []);
 
-  // Close suggestions on outside click
   useEffect(() => {
-    function handler(e: MouseEvent) { if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSuggestions(false); }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    function h(e: MouseEvent) { if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSugg(false); }
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  async function loadWeather(nextCity: string) {
-    if (!nextCity.trim()) return;
-    setIsLoading(true); setShowSuggestions(false);
-    setStatus("Syncing live weather providers…");
+  async function load(q: string) {
+    if (!q.trim()) return;
+    setLoading(true); setShowSugg(false);
+    setStatus("Fetching live weather…");
     try {
-      const [weatherData, aqiData] = await Promise.all([fetchWeather(nextCity), fetchAqi(nextCity)]);
-      setWeather({ ...demoWeather, ...weatherData, hourly: weatherData.hourly ?? demoWeather.hourly, daily: weatherData.daily ?? demoWeather.daily });
-      setAqi(aqiData as typeof aqi);
-      const resolved = weatherData.city || nextCity;
-      setCity(resolved); setQuery(resolved);
-      addRecentSearch(resolved);
-      const live = weatherData.provider?.live ?? false;
+      const [w, a] = await Promise.all([fetchWeather(q), fetchAqi(q)]);
+      setWeather({ ...DEMO, ...w, hourly: w.hourly ?? DEMO.hourly, daily: w.daily ?? DEMO.daily });
+      setAqi(a as typeof aqi);
+      const name = w.city || q;
+      setCity(name); setQuery(name); addRecentSearch(name);
+      const live = w.provider?.live ?? false;
       setIsLive(live);
-      setStatus(live ? `Live data — ${weatherData.provider?.source ?? "provider"}` : "Demo fallback — add OPENWEATHER_API_KEY for live data");
+      setStatus(live ? `✓ Live — Open-Meteo · updated just now` : "Demo data — weather service unavailable");
     } catch {
-      setWeather({ ...demoWeather, city: nextCity });
+      setWeather({ ...DEMO, city: q });
       setIsLive(false);
-      setStatus("API unavailable — showing demo data");
-    } finally { setIsLoading(false); }
+      setStatus("Could not fetch weather — showing demo data");
+    } finally { setLoading(false); }
   }
 
-  useEffect(() => { void loadWeather(city); }, []); // eslint-disable-line
+  useEffect(() => { void load(city); }, []); // eslint-disable-line
 
-  const hourly = useMemo(() => (weather.hourly ?? demoWeather.hourly ?? []).map((h) => ({ ...h, label: `${String(h.hour).padStart(2, "0")}:00`, tempF: toF(h.temp) })), [weather]);
-  const daily = weather.daily ?? demoWeather.daily ?? [];
+  const hourly = useMemo(() => (weather.hourly ?? DEMO.hourly ?? []).map(h => ({ ...h, label: `${String(h.hour).padStart(2,"0")}:00`, tempF: toF(h.temp) })), [weather]);
+  const daily  = weather.daily ?? DEMO.daily ?? [];
   const c = weather.current;
-  const cityFavorited = isFavorite(weather.city || city);
-  const visKm = `${Math.round((c.visibility || 0) / 100) / 10} km`;
-
-  function pickSuggestion(s: CitySearchResult) {
-    setQuery(s.displayName);
-    setShowSuggestions(false);
-    void loadWeather(s.name + (s.country ? `, ${s.country}` : ""));
-  }
-
-  const tempVal = (v: number) => fmt(v, tempUnit);
+  const fav = isFavorite(weather.city || city);
+  const T = (v: number) => fmt(v, tempUnit);
 
   return (
     <main className={theme === "light" ? "light min-h-screen" : "min-h-screen"}>
-      <div className="premium-shell min-h-screen overflow-x-hidden bg-[radial-gradient(ellipse_at_10%_0%,rgba(139,92,246,.22),transparent_40%),radial-gradient(ellipse_at_90%_10%,rgba(6,182,212,.18),transparent_38%),linear-gradient(160deg,#0a0a1a_0%,#0f0728_40%,#050d1a_100%)] px-4 pb-28 pt-5 text-white sm:px-6 lg:px-8 lg:pb-8">
+      <div className="premium-shell min-h-screen overflow-x-hidden bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(56,189,248,0.12),transparent),linear-gradient(180deg,#080e1a_0%,#0d1629_50%,#080e1a_100%)] px-4 pb-28 pt-4 text-white sm:px-6 lg:px-8 lg:pb-6">
 
-        {/* NAV */}
-        <nav className="sticky top-3 z-40 mx-auto flex max-w-7xl items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#0a0a1a]/80 px-4 py-3 shadow-2xl backdrop-blur-2xl">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-violet-600 to-cyan-500 shadow-lg"><CloudLightning size={20} /></div>
-            <div className="min-w-0 hidden sm:block"><p className="text-xs uppercase tracking-widest text-white/40">Global Platform</p><h1 className="truncate text-sm font-bold">{t.title}</h1></div>
+        {/* ── NAVBAR ── */}
+        <nav className="sticky top-3 z-40 mx-auto flex max-w-7xl items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0d1629]/80 px-5 py-3 shadow-xl shadow-black/20 backdrop-blur-2xl">
+          <div className="flex items-center gap-3">
+            <div className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 shadow-glow">
+              <CloudLightning size={18} className="text-white" />
+            </div>
+            <div className="hidden sm:block">
+              <p className="text-[10px] uppercase tracking-[.2em] text-white/35">Global Platform</p>
+              <h1 className="text-sm font-bold text-white/90">{t.title}</h1>
+            </div>
           </div>
-          <div className="hidden items-center gap-1 lg:flex">
-            {navFeatures.map((f) => <a key={f} href={`#${f.toLowerCase()}`} className="rounded-xl px-3 py-2 text-sm text-white/60 transition hover:bg-white/8 hover:text-white">{f}</a>)}
+          <div className="hidden items-center gap-0.5 lg:flex">
+            {NAV.map(f => <a key={f} href={`#${f.toLowerCase()}`} className="rounded-xl px-3 py-2 text-sm text-white/55 transition hover:bg-white/6 hover:text-white">{f}</a>)}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={toggleTempUnit} className="rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-xs font-bold transition hover:bg-white/12">°{tempUnit === "C" ? "F" : "C"}</button>
-            <button onClick={toggleLanguage} className="rounded-xl border border-white/12 bg-white/6 px-3 py-2 text-xs transition hover:bg-white/12">{language === "en" ? "اردو" : "EN"}</button>
-            <button onClick={toggleTheme} className="grid size-9 place-items-center rounded-xl border border-white/12 bg-white/6 transition hover:bg-white/12"><Sun size={16} /></button>
-            <a href="/auth" className="hidden rounded-xl bg-gradient-to-r from-violet-600 to-cyan-500 px-4 py-2 text-xs font-bold transition hover:opacity-90 sm:block">Sign in</a>
+            <button onClick={toggleTempUnit} className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-white/70 transition hover:bg-white/10">°{tempUnit === "C" ? "F" : "C"}</button>
+            <button onClick={toggleLanguage} className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/70 transition hover:bg-white/10">{language === "en" ? "اردو" : "EN"}</button>
+            <button onClick={toggleTheme} className="grid size-8 place-items-center rounded-xl border border-white/10 bg-white/5 transition hover:bg-white/10"><Sun size={15} className="text-white/60" /></button>
+            <a href="/auth" className="hidden rounded-xl bg-sky-600 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-500 sm:block">Sign in</a>
           </div>
         </nav>
 
-        {/* MOBILE DOCK */}
-        <div className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-5 gap-1 rounded-2xl border border-white/10 bg-[#0a0a1a]/92 p-1.5 shadow-2xl backdrop-blur-2xl lg:hidden mobile-dock">
-          {navFeatures.map((f) => <a key={f} href={`#${f.toLowerCase()}`} className="rounded-xl px-1 py-2.5 text-center text-[10px] text-white/60 transition hover:bg-white/10 hover:text-white">{f}</a>)}
+        {/* ── MOBILE DOCK ── */}
+        <div className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-5 gap-1 rounded-2xl border border-white/[0.08] bg-[#0a1020]/92 p-1.5 shadow-2xl backdrop-blur-2xl lg:hidden mobile-dock">
+          {NAV.map(f => <a key={f} href={`#${f.toLowerCase()}`} className="rounded-xl py-2.5 text-center text-[10px] text-white/50 transition hover:bg-white/8 hover:text-white">{f}</a>)}
         </div>
 
-        {/* HERO */}
-        <div className="mx-auto mt-6 grid max-w-7xl gap-5 xl:grid-cols-[1.5fr_.5fr]">
-          <ShellCard className="relative overflow-hidden !bg-gradient-to-br from-[#13062e]/90 to-[#060d1f]/80 p-7 sm:p-9">
-            <div className="absolute -right-6 -top-4 hidden animate-float opacity-10 md:block"><CloudRain size={260} className="text-violet-400" /></div>
-            <div className="relative z-10">
-              <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-500/10 px-3 py-1.5 text-xs text-violet-300"><Sparkles size={13} /> Worldwide Coverage · 200,000+ Cities</span>
-              <h2 className="text-4xl font-black leading-tight tracking-tight sm:text-6xl">{t.title}</h2>
-              <p className="mt-3 max-w-xl text-sm leading-7 text-white/60">{t.subtitle}</p>
+        {/* ── HERO ── */}
+        <div className="mx-auto mt-5 grid max-w-7xl gap-4 xl:grid-cols-[1.55fr_.45fr]">
 
-              {/* SEARCH with autocomplete */}
-              <div ref={searchRef} className="relative mt-6 max-w-2xl">
-                <form onSubmit={(e) => { e.preventDefault(); void loadWeather(query); }} className="flex items-center gap-2 rounded-2xl border border-white/12 bg-white/6 p-2 transition focus-within:border-violet-500/50 focus-within:bg-white/10">
-                  <Search className="ml-2 shrink-0 text-white/40" size={18} />
-                  <input value={query} onChange={(e) => handleQueryChange(e.target.value)} onFocus={() => suggestions.length > 0 && setShowSuggestions(true)} placeholder={t.search} aria-label="Search city" className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-sm outline-none placeholder:text-white/35" />
-                  {query && <button type="button" onClick={() => { setQuery(""); setSuggestions([]); }} className="shrink-0 text-white/30 hover:text-white/70"><X size={15} /></button>}
-                  <button type="submit" disabled={isLoading} className="shrink-0 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-500 px-4 py-2.5 text-xs font-bold transition hover:opacity-90 disabled:opacity-50">{isLoading ? <Loader2 size={15} className="animate-spin" /> : "Search"}</button>
+          {/* Search card */}
+          <Card className="relative overflow-hidden border-sky-400/10 !bg-[#0d1a32]/80 p-7 sm:p-9">
+            <div className="absolute -right-8 top-6 hidden animate-float opacity-[0.07] md:block"><CloudRain size={240} className="text-sky-400" /></div>
+            <div className="relative z-10">
+              <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-sky-400/15 bg-sky-500/8 px-3 py-1.5 text-xs text-sky-300">
+                <Sparkles size={12} /> Worldwide · 200,000+ Cities · Free Live Data
+              </span>
+              <h2 className="text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl">{t.title}</h2>
+              <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/50">{t.sub}</p>
+
+              {/* Search */}
+              <div ref={searchRef} className="relative mt-6 max-w-xl">
+                <form onSubmit={e => { e.preventDefault(); void load(query); }}
+                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] p-1.5 transition focus-within:border-sky-500/40 focus-within:bg-white/[0.08]">
+                  <Search className="ml-2 shrink-0 text-white/35" size={17} />
+                  <input value={query} onChange={e => onQueryChange(e.target.value)}
+                    onFocus={() => sugg.length > 0 && setShowSugg(true)}
+                    placeholder={t.search} aria-label="Search city"
+                    className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-sm text-white outline-none placeholder:text-white/30" />
+                  {query && <button type="button" onClick={() => { setQuery(""); setSugg([]); }} className="shrink-0 text-white/25 hover:text-white/60"><X size={14} /></button>}
+                  <button type="submit" disabled={loading}
+                    className="shrink-0 rounded-lg bg-sky-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-sky-500 disabled:opacity-50">
+                    {loading ? <Loader2 size={14} className="animate-spin" /> : "Search"}
+                  </button>
                 </form>
 
-                {/* Autocomplete dropdown */}
-                {showSuggestions && (
-                  <div className="absolute top-full z-50 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0f0a2a]/95 shadow-2xl backdrop-blur-2xl">
-                    {suggestions.map((s, i) => (
-                      <button key={i} onClick={() => pickSuggestion(s)} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition hover:bg-white/8">
-                        <Globe size={14} className="shrink-0 text-cyan-400" />
-                        <div><p className="font-medium">{s.name}</p><p className="text-xs text-white/45">{[s.state, s.country].filter(Boolean).join(", ")}</p></div>
+                {/* Dropdown */}
+                {showSugg && (
+                  <div className="animate-slideDown absolute top-full z-50 mt-1.5 w-full overflow-hidden rounded-xl border border-white/10 bg-[#0d1a32]/96 shadow-2xl backdrop-blur-2xl">
+                    {sugg.map((s, i) => (
+                      <button key={i} onClick={() => { setQuery(s.displayName); setShowSugg(false); void load(s.name); }}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition hover:bg-white/6">
+                        <Globe size={13} className="shrink-0 text-sky-400" />
+                        <div><p className="font-medium text-white/90">{s.name}</p><p className="text-[11px] text-white/40">{[s.state, s.country].filter(Boolean).join(", ")}</p></div>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* Recent searches */}
+              {/* Recent */}
               {recentSearches.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {recentSearches.slice(0, 6).map((r) => (
-                    <button key={r} onClick={() => { setQuery(r); void loadWeather(r); }} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/60 transition hover:-translate-y-0.5 hover:bg-white/10 hover:text-white">{r}</button>
+                  {recentSearches.slice(0,5).map(r => (
+                    <button key={r} onClick={() => { setQuery(r); void load(r); }}
+                      className="rounded-full border border-white/8 bg-white/[0.04] px-3 py-1 text-xs text-white/50 transition hover:bg-white/8 hover:text-white">{r}</button>
                   ))}
                 </div>
               )}
 
-              {/* World city chips */}
+              {/* World cities */}
               <div className="mt-4 flex flex-wrap gap-2">
-                {worldCities.map(({ name, flag }) => (
-                  <button key={name} onClick={() => { setQuery(name); void loadWeather(name); }} className="rounded-full border border-white/8 bg-white/4 px-3 py-1.5 text-xs text-white/55 transition hover:bg-white/10 hover:text-white">
+                {CITIES.map(({name, flag}) => (
+                  <button key={name} onClick={() => { setQuery(name); void load(name); }}
+                    className="rounded-full border border-white/[0.07] bg-white/[0.03] px-3 py-1.5 text-xs text-white/45 transition hover:bg-white/[0.08] hover:text-white/90">
                     {flag} {name}
                   </button>
                 ))}
               </div>
             </div>
-          </ShellCard>
+          </Card>
 
-          {/* CURRENT WEATHER */}
-          <ShellCard className="!bg-gradient-to-br from-[#0d0a2a]/90 to-[#060d20]/80">
+          {/* Current weather */}
+          <Card className="flex flex-col border-sky-400/10 !bg-[#0a1628]/80">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs text-white/50">{t.current}</p>
-                <h3 className="mt-1 flex items-center gap-1.5 text-lg font-bold"><MapPin size={16} className="text-cyan-400" />{weather.city || city}{weather.country && <span className="text-xs text-white/40">, {weather.country}</span>}</h3>
+                <p className="text-xs text-white/40">{t.current}</p>
+                <h3 className="mt-1 flex items-center gap-1.5 font-bold text-white">
+                  <MapPin size={15} className="text-sky-400" />
+                  {weather.city || city}
+                  {weather.country && <span className="text-xs font-normal text-white/35">, {weather.country}</span>}
+                </h3>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => cityFavorited ? removeFavorite(weather.city || city) : addFavorite({ city: weather.city || city })} className={`grid size-8 place-items-center rounded-xl border transition ${cityFavorited ? "border-amber-400/40 bg-amber-400/15 text-amber-300" : "border-white/12 text-white/40 hover:text-amber-300"}`}>
-                  <Star size={14} fill={cityFavorited ? "currentColor" : "none"} />
+              <div className="flex gap-1.5">
+                <button onClick={() => fav ? removeFavorite(weather.city||city) : addFavorite({city:weather.city||city})}
+                  className={`grid size-8 place-items-center rounded-xl border transition ${fav ? "border-amber-400/30 bg-amber-400/10 text-amber-300" : "border-white/10 text-white/30 hover:text-amber-300"}`}>
+                  <Star size={13} fill={fav ? "currentColor" : "none"} />
                 </button>
-                <Bell size={18} className="text-amber-300 mt-1" />
+                <Bell size={16} className="mt-1.5 text-amber-300" />
               </div>
             </div>
-            <div className="mt-6">
-              <div className="text-7xl">{weatherIcon(c.condition)}</div>
-              <p className="mt-2 text-6xl font-black">{tempVal(c.temp)}</p>
-              <p className="mt-1 capitalize text-lg text-white/65">{c.condition}</p>
+
+            <div className="mt-5 flex-1">
+              <div className="text-6xl leading-none">{wxEmoji(c.condition)}</div>
+              <div className="mt-3">
+                <span className="text-6xl font-black text-white">{T(c.temp)}</span>
+              </div>
+              <p className="mt-1 capitalize text-white/60">{c.condition}</p>
             </div>
+
             <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-xl bg-white/6 p-2.5"><p className="text-white/45">High</p><p className="font-bold">{tempVal(c.max)}</p></div>
-              <div className="rounded-xl bg-white/6 p-2.5"><p className="text-white/45">Low</p><p className="font-bold">{tempVal(c.min)}</p></div>
+              <div className="rounded-xl bg-white/[0.05] px-3 py-2.5"><p className="text-white/40">High</p><p className="font-bold text-red-300">{T(c.max)}</p></div>
+              <div className="rounded-xl bg-white/[0.05] px-3 py-2.5"><p className="text-white/40">Low</p><p className="font-bold text-blue-300">{T(c.min)}</p></div>
+              <div className="rounded-xl bg-white/[0.05] px-3 py-2.5"><p className="text-white/40">Sunrise</p><p className="font-medium">{c.sunrise}</p></div>
+              <div className="rounded-xl bg-white/[0.05] px-3 py-2.5"><p className="text-white/40">Sunset</p><p className="font-medium">{c.sunset}</p></div>
             </div>
-            <div className="mt-3 rounded-xl border border-white/8 bg-white/4 px-3 py-2.5">
-              <p className="flex items-center gap-2 text-xs text-white/55">
-                <CheckCircle2 size={13} className={isLive ? "text-emerald-400" : "text-amber-400"} />{status}
+
+            <div className="mt-3 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2">
+              <p className="flex items-center gap-2 text-xs text-white/45">
+                <CheckCircle2 size={12} className={isLive ? "text-emerald-400" : "text-amber-400"} />
+                {status}
               </p>
             </div>
-          </ShellCard>
+          </Card>
         </div>
 
-        {/* METRICS */}
-        <div className="mx-auto mt-5 max-w-7xl grid gap-4 grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
-          {isLoading ? Array.from({ length: 8 }).map((_, i) => <div key={i} className="col-span-2"><Skeleton /></div>) : <>
-            <div className="col-span-2"><Metric icon={Thermometer} label={t.feelsLike} value={tempVal(c.feelsLike)} tone="text-amber-300" /></div>
-            <div className="col-span-2"><Metric icon={Droplets} label={t.humidity} value={`${c.humidity}%`} tone="text-cyan-400" /></div>
-            <div className="col-span-2"><Metric icon={Wind} label={t.wind} value={`${c.wind} km/h`} tone="text-violet-300" /></div>
-            <div className="col-span-2"><Metric icon={Gauge} label={t.pressure} value={`${c.pressure} hPa`} tone="text-pink-300" /></div>
-            <div className="col-span-2"><Metric icon={Navigation} label={t.visibility} value={visKm} tone="text-sky-300" /></div>
-            <div className="col-span-2"><Metric icon={Sun} label={t.uv} value={c.uv ? `${c.uv} — High` : "Live only"} tone="text-yellow-300" /></div>
-            <div className="col-span-2"><Metric icon={Moon} label={t.sunset} value={String(c.sunset).slice(0, 8)} tone="text-indigo-300" /></div>
-            <div className="col-span-2"><Metric icon={TrendingUp} label={t.minMax} value={`${tempVal(c.min)} / ${tempVal(c.max)}`} tone="text-emerald-300" /></div>
-          </>}
+        {/* ── STATS ── */}
+        <div className="mx-auto mt-4 max-w-7xl grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+          <div className="col-span-2"><Stat icon={Thermometer} label={t.feelsLike} value={T(c.feelsLike)} color="text-orange-300" /></div>
+          <div className="col-span-2"><Stat icon={Droplets}   label={t.humidity}  value={`${c.humidity}%`}     color="text-sky-300" /></div>
+          <div className="col-span-2"><Stat icon={Wind}       label={t.wind}      value={`${c.wind} km/h`}    color="text-teal-300" /></div>
+          <div className="col-span-2"><Stat icon={Gauge}      label={t.pressure}  value={`${c.pressure} hPa`} color="text-purple-300" /></div>
+          <div className="col-span-2"><Stat icon={Navigation} label={t.visibility} value={`${Math.round((c.visibility||0)/100)/10} km`} color="text-cyan-300" /></div>
+          <div className="col-span-2"><Stat icon={Sun}        label={t.uv}        value={c.uv ? `${c.uv}` : "—"}    color="text-yellow-300" /></div>
+          <div className="col-span-2"><Stat icon={Moon}       label={t.sunset}    value={c.sunset}            color="text-indigo-300" /></div>
+          <div className="col-span-2"><Stat icon={TrendingUp} label={t.minMax}    value={`${T(c.min)} / ${T(c.max)}`} color="text-rose-300" /></div>
         </div>
 
-        {/* HOURLY CHART + 7 DAY */}
-        <div className="mx-auto mt-5 grid max-w-7xl gap-5 lg:grid-cols-[1fr_.85fr]">
-          <ShellCard id="forecast">
-            <div className="mb-4 flex items-center justify-between"><h3 className="font-bold">{t.forecast}</h3><Activity className="text-cyan-400" size={18} /></div>
-            <div className="h-64">
+        {/* ── CHART + 7 DAY ── */}
+        <div className="mx-auto mt-4 grid max-w-7xl gap-4 lg:grid-cols-[1fr_.82fr]">
+          <Card id="forecast">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-bold text-white/90">{t.forecast}</h3>
+              <Activity size={17} className="text-sky-400" />
+            </div>
+            <div className="h-60">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={hourly}>
                   <defs>
-                    <linearGradient id="tg" x1="0" x2="0" y1="0" y2="1"><stop offset="5%" stopColor="#a78bfa" stopOpacity={0.6} /><stop offset="95%" stopColor="#a78bfa" stopOpacity={0} /></linearGradient>
-                    <linearGradient id="hg" x1="0" x2="0" y1="0" y2="1"><stop offset="5%" stopColor="#22d3ee" stopOpacity={0.25} /><stop offset="95%" stopColor="#22d3ee" stopOpacity={0} /></linearGradient>
+                    <linearGradient id="tg" x1="0" x2="0" y1="0" y2="1"><stop offset="5%" stopColor="#38bdf8" stopOpacity={0.5}/><stop offset="95%" stopColor="#38bdf8" stopOpacity={0}/></linearGradient>
+                    <linearGradient id="hg" x1="0" x2="0" y1="0" y2="1"><stop offset="5%" stopColor="#34d399" stopOpacity={0.2}/><stop offset="95%" stopColor="#34d399" stopOpacity={0}/></linearGradient>
                   </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false} />
-                  <XAxis dataKey="label" stroke="rgba(255,255,255,.3)" tick={{ fontSize: 10 }} />
-                  <YAxis stroke="rgba(255,255,255,.3)" tick={{ fontSize: 10 }} />
-                  <Tooltip contentStyle={{ background: "#0f0728", border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, fontSize: 12 }} />
-                  <Area type="monotone" dataKey={tempUnit === "F" ? "tempF" : "temp"} stroke="#a78bfa" fill="url(#tg)" strokeWidth={2.5} name={`Temp °${tempUnit}`} />
-                  <Area type="monotone" dataKey="humidity" stroke="#22d3ee" fill="url(#hg)" strokeWidth={2} name="Humidity %" />
+                  <CartesianGrid stroke="rgba(255,255,255,.05)" vertical={false} />
+                  <XAxis dataKey="label" stroke="rgba(255,255,255,.25)" tick={{fontSize:10}} />
+                  <YAxis stroke="rgba(255,255,255,.25)" tick={{fontSize:10}} />
+                  <Tooltip contentStyle={{background:"#0d1629",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,fontSize:12}} />
+                  <Area type="monotone" dataKey={tempUnit==="F"?"tempF":"temp"} stroke="#38bdf8" fill="url(#tg)" strokeWidth={2} name={`Temp °${tempUnit}`} />
+                  <Area type="monotone" dataKey="humidity" stroke="#34d399" fill="url(#hg)" strokeWidth={1.5} name="Humidity %" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          </ShellCard>
-          <ShellCard>
-            <h3 className="mb-4 font-bold">{t.week}</h3>
-            <div className="space-y-2">
-              {daily.map((d) => (
-                <div key={d.day} className="grid grid-cols-[.6fr_1fr_.4fr_.4fr_.45fr] items-center gap-2 rounded-xl bg-white/5 px-3 py-2.5 text-sm transition hover:bg-white/8">
-                  <span className="font-semibold text-xs">{d.day}</span>
-                  <span className="flex items-center gap-1.5 truncate text-xs text-white/60"><span>{weatherIcon(d.condition)}</span><span className="truncate">{d.condition}</span></span>
-                  <span className="text-right text-xs font-medium">{tempVal(d.high)}</span>
-                  <span className="text-right text-xs text-white/45">{tempVal(d.low)}</span>
-                  <span className="text-right text-xs text-cyan-400">{d.rain}%</span>
+          </Card>
+
+          <Card>
+            <h3 className="mb-4 font-bold text-white/90">{t.week}</h3>
+            <div className="space-y-1.5">
+              {daily.map(d => (
+                <div key={d.day} className="grid grid-cols-[.55fr_1fr_.38fr_.38fr_.4fr] items-center gap-2 rounded-xl bg-white/[0.04] px-3 py-2.5 text-sm transition hover:bg-white/[0.07]">
+                  <span className="text-xs font-bold text-white/80">{d.day}</span>
+                  <span className="flex items-center gap-1.5 truncate text-xs text-white/50">{wxEmoji(d.condition)} <span className="truncate">{d.condition}</span></span>
+                  <span className="text-right text-xs font-semibold text-red-300">{T(d.high)}</span>
+                  <span className="text-right text-xs text-blue-300">{T(d.low)}</span>
+                  <span className="text-right text-xs text-sky-400">{d.rain}%</span>
                 </div>
               ))}
             </div>
-          </ShellCard>
+          </Card>
         </div>
 
-        {/* RADAR + LIGHTNING */}
-        <div className="mx-auto mt-5 grid max-w-7xl gap-5 lg:grid-cols-3">
-          <ShellCard className="lg:col-span-2">
-            <div className="mb-4 flex items-center justify-between"><h3 className="font-bold">Radar & Storm Tracking</h3><Radar className="text-violet-400" size={18} /></div>
-            <div className="relative min-h-[360px] overflow-hidden rounded-2xl border border-white/8 bg-[radial-gradient(circle_at_35%_45%,rgba(139,92,246,.45),transparent_14%),radial-gradient(circle_at_65%_55%,rgba(6,182,212,.35),transparent_14%),linear-gradient(135deg,#0f0728,#060d20)]">
-              <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px)] bg-[size:44px_44px]" />
-              <div className="absolute left-4 top-4 flex flex-wrap gap-2">{["Rain","Clouds","Temp","Wind","Satellite"].map((x) => <button key={x} className="rounded-full border border-white/12 bg-black/50 px-3 py-1.5 text-xs backdrop-blur transition hover:bg-white/15">{x}</button>)}</div>
-              <div className="absolute bottom-4 left-4 rounded-2xl border border-white/10 bg-black/50 p-4 backdrop-blur max-w-xs"><p className="text-sm font-semibold">OpenWeather / Mapbox layer-ready</p><p className="mt-1 text-xs text-white/55">Connect MAPBOX_TOKEN to enable interactive live radar.</p></div>
+        {/* ── RADAR + LIGHTNING ── */}
+        <div className="mx-auto mt-4 grid max-w-7xl gap-4 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <div className="mb-4 flex items-center justify-between"><h3 className="font-bold text-white/90">Radar & Storm Tracking</h3><Radar size={17} className="text-sky-400" /></div>
+            <div className="relative min-h-[320px] overflow-hidden rounded-xl border border-white/[0.07] bg-[radial-gradient(circle_at_35%_45%,rgba(56,189,248,.3),transparent_16%),radial-gradient(circle_at_68%_55%,rgba(52,211,153,.2),transparent_14%),linear-gradient(135deg,#0a1628,#080e1a)]">
+              <div className="absolute inset-0 bg-[linear-gradient(rgba(56,189,248,.03)_1px,transparent_1px),linear-gradient(90deg,rgba(56,189,248,.03)_1px,transparent_1px)] bg-[size:42px_42px]" />
+              <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+                {["Rain","Clouds","Temp","Wind","Satellite"].map(x => <button key={x} className="rounded-lg border border-white/12 bg-black/50 px-3 py-1.5 text-xs backdrop-blur transition hover:bg-white/15">{x}</button>)}
+              </div>
+              <div className="absolute bottom-4 left-4 max-w-xs rounded-xl border border-white/10 bg-[#080e1a]/70 p-4 backdrop-blur">
+                <p className="text-sm font-semibold">OpenWeather / Mapbox ready</p>
+                <p className="mt-1 text-xs text-white/45">Add MAPBOX_TOKEN to enable interactive live radar.</p>
+              </div>
             </div>
-          </ShellCard>
-          <ShellCard id="lightning">
-            <h3 className="mb-4 flex items-center gap-2 font-bold"><Zap className="text-amber-300" size={18} />Lightning Detection</h3>
-            <div className="space-y-3">
-              {[{l:"Strike rate",v:"21 / 10 min"},{l:"Heatmap",v:"High density"},{l:"Nearest",v:"18.4 km"},{l:"Status",v:"WS-ready"}].map(({l,v})=>(
-                <div key={l} className="rounded-xl bg-white/5 px-4 py-3"><p className="text-xs text-white/45">{l}</p><p className="mt-0.5 text-sm font-semibold">{v}</p></div>
-              ))}
-            </div>
-          </ShellCard>
-        </div>
-
-        {/* AQI + ALERTS */}
-        <div className="mx-auto mt-5 grid max-w-7xl gap-5 lg:grid-cols-[.7fr_1.3fr]">
-          <ShellCard id="aqi">
-            <h3 className="mb-5 font-bold">Air Quality Index</h3>
-            <div className="flex items-center gap-4">
-              <div className="grid size-24 shrink-0 place-items-center rounded-full text-2xl font-black text-black" style={{ background: aqi.score <= 50 ? "linear-gradient(135deg,#6ee7b7,#34d399)" : aqi.score <= 100 ? "linear-gradient(135deg,#fde68a,#f59e0b)" : "linear-gradient(135deg,#fca5a5,#ef4444)" }}>{aqi.score}</div>
-              <div><p className="text-xl font-bold">{aqi.category}</p><p className="mt-1 text-xs text-white/55 leading-relaxed">{aqi.recommendation}</p></div>
-            </div>
-            <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs">
-              {[["PM2.5", aqi.pm25],["PM10", aqi.pm10],["O₃", aqi.o3],["CO", aqi.co],["NO₂", aqi.no2],["Guide","↗"]].map(([l,v])=>(
-                <div key={String(l)} className="rounded-xl bg-white/5 py-2"><p className="text-white/40">{l}</p><p className="font-semibold">{v}</p></div>
-              ))}
-            </div>
-          </ShellCard>
-          <ShellCard id="alerts">
-            <h3 className="mb-4 flex items-center gap-2 font-bold"><ShieldAlert className="text-amber-300" size={18} />{t.alerts}</h3>
-            <div className="grid gap-3 md:grid-cols-3">
-              {demoAlerts.map(({title,body,severity})=>(
-                <article key={title} className={`rounded-2xl border p-4 transition hover:-translate-y-0.5 ${severity==="critical"?"border-red-400/25 bg-red-400/8":severity==="warning"?"border-amber-400/25 bg-amber-400/8":"border-sky-400/20 bg-sky-400/8"}`}>
-                  <p className={`text-sm font-bold ${severity==="critical"?"text-red-300":severity==="warning"?"text-amber-300":"text-sky-300"}`}>{title}</p>
-                  <p className="mt-2 text-xs text-white/55 leading-relaxed">{body}</p>
-                  <span className={`mt-3 inline-block rounded-full px-2 py-0.5 text-xs uppercase tracking-wide ${severity==="critical"?"bg-red-400/20 text-red-300":severity==="warning"?"bg-amber-400/20 text-amber-300":"bg-sky-400/20 text-sky-300"}`}>{severity}</span>
-                </article>
-              ))}
-            </div>
-          </ShellCard>
-        </div>
-
-        {/* COMMUNITY + ADMIN */}
-        <div className="mx-auto mt-5 grid max-w-7xl gap-5 lg:grid-cols-3">
-          <ShellCard id="community" className="lg:col-span-2">
-            <h3 className="mb-4 flex items-center gap-2 font-bold"><Users size={18} />{t.community}</h3>
-            <div className="grid gap-3 md:grid-cols-3">
-              {demoPosts.map(({title,place,likes})=>(
-                <article key={title} className="group cursor-pointer rounded-2xl bg-white/5 p-4 transition hover:-translate-y-0.5 hover:bg-white/8">
-                  <div className="mb-3 h-20 rounded-xl bg-gradient-to-br from-violet-500/25 via-cyan-500/10 to-emerald-400/20" />
-                  <p className="text-sm font-semibold leading-snug">{title}</p>
-                  <p className="mt-1.5 flex items-center gap-1 text-xs text-white/45"><MapPin size={11} />{place}</p>
-                  <p className="mt-3 flex items-center gap-1.5 text-xs text-rose-400"><Heart size={13} fill="currentColor" />{likes} likes</p>
-                </article>
-              ))}
-            </div>
-          </ShellCard>
-          <ShellCard id="admin">
-            <h3 className="mb-4 flex items-center gap-2 font-bold"><Settings size={18} />{t.admin}</h3>
-            <a href="/admin" className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-3 text-sm font-bold text-violet-300 transition hover:bg-violet-500/20">Open Admin Panel →</a>
+          </Card>
+          <Card id="lightning">
+            <h3 className="mb-4 flex items-center gap-2 font-bold text-white/90"><Zap size={17} className="text-amber-300" />Lightning</h3>
             <div className="space-y-2">
-              {[{l:"Provider",v:"99.98%",d:"OpenWeather + AQICN"},{l:"Alerts",v:"Live",d:"FCM push ready"},{l:"Refresh",v:"5 min",d:"Auto cache"},{l:"Security",v:"RLS",d:"Supabase policies"}].map(({l,v,d})=>(
-                <div key={l} className="rounded-xl bg-white/5 px-4 py-3"><div className="flex justify-between"><p className="text-sm font-semibold">{l}</p><span className="text-sm text-cyan-400 font-bold">{v}</span></div><p className="mt-0.5 text-xs text-white/45">{d}</p></div>
+              {[{l:"Strike rate",v:"21 / 10 min"},{l:"Heatmap",v:"High"},{l:"Nearest",v:"18.4 km"},{l:"Status",v:"WS-ready"}].map(({l,v}) => (
+                <div key={l} className="rounded-xl bg-white/[0.04] px-4 py-3"><p className="text-xs text-white/40">{l}</p><p className="mt-0.5 text-sm font-semibold text-white/85">{v}</p></div>
               ))}
             </div>
-          </ShellCard>
+          </Card>
         </div>
 
-        {/* FOOTER */}
-        <footer className="mx-auto mt-10 max-w-7xl border-t border-white/8 pt-6 pb-4 text-center text-xs text-white/30">
-          <p>© {new Date().getFullYear()} Zeeshu Weather Alert — Powered by OpenWeather · Open-Meteo · AQICN · Firebase · Supabase</p>
-          <p className="mt-1">Worldwide coverage · 200,000+ cities · Real-time data</p>
+        {/* ── AQI + ALERTS ── */}
+        <div className="mx-auto mt-4 grid max-w-7xl gap-4 lg:grid-cols-[.65fr_1.35fr]">
+          <Card id="aqi">
+            <h3 className="mb-4 font-bold text-white/90">Air Quality Index</h3>
+            <div className="flex items-center gap-4">
+              <div className="grid size-24 shrink-0 place-items-center rounded-full text-2xl font-black text-black shadow-lg"
+                style={{background: aqi.score <= 50 ? "linear-gradient(135deg,#6ee7b7,#10b981)" : aqi.score <= 100 ? "linear-gradient(135deg,#fde68a,#f59e0b)" : aqi.score <= 150 ? "linear-gradient(135deg,#fdba74,#f97316)" : "linear-gradient(135deg,#fca5a5,#ef4444)"}}>
+                {aqi.score || "—"}
+              </div>
+              <div>
+                <p className="text-lg font-bold">{aqi.category}</p>
+                <p className="mt-1 text-xs leading-relaxed text-white/45">{aqi.recommendation}</p>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
+              {[["PM2.5",aqi.pm25],["PM10",aqi.pm10],["O₃",aqi.o3],["CO",aqi.co],["NO₂",aqi.no2],["AQI",aqi.score]].map(([l,v]) => (
+                <div key={String(l)} className="rounded-xl bg-white/[0.04] py-2.5"><p className="text-white/35">{l}</p><p className="font-bold">{v}</p></div>
+              ))}
+            </div>
+          </Card>
+
+          <Card id="alerts">
+            <h3 className="mb-4 flex items-center gap-2 font-bold text-white/90"><ShieldAlert size={17} className="text-amber-300" />{t.alerts}</h3>
+            <div className="grid gap-3 md:grid-cols-3">
+              {[{title:"Thunderstorm Warning",body:"High-energy cell approaching the region.",s:"critical"},{title:"Flood Watch",body:"Low lying areas may accumulate water.",s:"warning"},{title:"Heat Advisory",body:"Avoid prolonged sun exposure today.",s:"watch"}].map(({title,body,s}) => (
+                <article key={title} className={`rounded-xl border p-4 transition hover:-translate-y-0.5 ${s==="critical"?"border-red-400/20 bg-red-500/6":s==="warning"?"border-amber-400/20 bg-amber-500/6":"border-sky-400/15 bg-sky-500/5"}`}>
+                  <p className={`text-sm font-bold ${s==="critical"?"text-red-300":s==="warning"?"text-amber-300":"text-sky-300"}`}>{title}</p>
+                  <p className="mt-2 text-xs leading-relaxed text-white/45">{body}</p>
+                  <span className={`mt-3 inline-block rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide ${s==="critical"?"bg-red-500/15 text-red-300":s==="warning"?"bg-amber-500/15 text-amber-300":"bg-sky-500/12 text-sky-300"}`}>{s}</span>
+                </article>
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        {/* ── COMMUNITY + ADMIN ── */}
+        <div className="mx-auto mt-4 grid max-w-7xl gap-4 lg:grid-cols-3">
+          <Card id="community" className="lg:col-span-2">
+            <h3 className="mb-4 flex items-center gap-2 font-bold text-white/90"><Users size={17} />{t.community}</h3>
+            <div className="grid gap-3 md:grid-cols-3">
+              {[{t:"Rain bands reported near DHA",p:"Lahore",l:42},{t:"Dusty wind and low visibility",p:"Multan",l:31},{t:"Clear sunset after clouds",p:"Karachi",l:55}].map(({t:title,p,l}) => (
+                <article key={title} className="group cursor-pointer rounded-xl bg-white/[0.04] p-4 transition hover:-translate-y-0.5 hover:bg-white/[0.07]">
+                  <div className="mb-3 h-20 rounded-lg bg-gradient-to-br from-sky-500/20 via-teal-400/10 to-emerald-400/15" />
+                  <p className="text-sm font-semibold leading-snug text-white/85">{title}</p>
+                  <p className="mt-1.5 flex items-center gap-1 text-xs text-white/35"><MapPin size={10} />{p}</p>
+                  <p className="mt-3 flex items-center gap-1.5 text-xs text-rose-400"><Heart size={12} fill="currentColor" />{l} likes</p>
+                </article>
+              ))}
+            </div>
+          </Card>
+
+          <Card id="admin">
+            <h3 className="mb-4 flex items-center gap-2 font-bold text-white/90"><Settings size={17} />{t.admin}</h3>
+            <a href="/admin" className="mb-4 flex items-center justify-center rounded-xl border border-sky-500/20 bg-sky-500/8 py-3 text-sm font-bold text-sky-300 transition hover:bg-sky-500/15">Open Admin Panel →</a>
+            <div className="space-y-2">
+              {[{l:"Provider",v:"Live",d:"Open-Meteo · free worldwide"},{l:"Alerts",v:"Ready",d:"FCM push enabled"},{l:"Refresh",v:"Live",d:"Real-time data"},{l:"Security",v:"RLS",d:"Supabase policies"}].map(({l,v,d}) => (
+                <div key={l} className="rounded-xl bg-white/[0.04] px-4 py-3">
+                  <div className="flex justify-between"><p className="text-sm font-semibold text-white/80">{l}</p><span className="text-xs font-bold text-emerald-400">{v}</span></div>
+                  <p className="mt-0.5 text-xs text-white/35">{d}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        {/* ── FOOTER ── */}
+        <footer className="mx-auto mt-8 max-w-7xl border-t border-white/[0.06] pt-5 pb-3 text-center text-xs text-white/25">
+          <p>© {new Date().getFullYear()} Zeeshu Weather Alert — Powered by Open-Meteo · AQICN · Firebase · Supabase</p>
+          <p className="mt-1">Worldwide coverage · 200,000+ cities · Real-time live data · No API key required</p>
         </footer>
       </div>
     </main>
