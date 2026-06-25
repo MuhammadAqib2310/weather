@@ -56,31 +56,19 @@ export type AqiResponse = {
   provider?: { source: string; live: boolean; refreshedAt: string };
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-
-// City-to-coordinate cache to avoid repeated lookups
-const coordCache = new Map<string, { lat: string; lon: string }>();
-
-// Default coords map for common Pakistani / world cities
-const knownCoords: Record<string, { lat: string; lon: string }> = {
-  lahore:    { lat: "31.5204", lon: "74.3587" },
-  karachi:   { lat: "24.8607", lon: "67.0011" },
-  islamabad: { lat: "33.6844", lon: "73.0479" },
-  rawalpindi:{ lat: "33.5651", lon: "73.0169" },
-  peshawar:  { lat: "34.0151", lon: "71.5249" },
-  multan:    { lat: "30.1978", lon: "71.4711" },
-  dubai:     { lat: "25.2048", lon: "55.2708" },
-  london:    { lat: "51.5074", lon: "-0.1278" },
-  "new york":{ lat: "40.7128", lon: "-74.0060" },
-  paris:     { lat: "48.8566", lon: "2.3522" },
+export type CitySearchResult = {
+  name: string;
+  country: string;
+  state?: string;
+  lat: number;
+  lon: number;
+  displayName: string;
 };
 
-function getCoordsForCity(city: string): { lat: string; lon: string } | null {
-  const key = city.trim().toLowerCase();
-  if (coordCache.has(key)) return coordCache.get(key)!;
-  if (knownCoords[key]) return knownCoords[key];
-  return null;
-}
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+// Coordinate cache keyed by normalized city name
+const coordCache = new Map<string, { lat: string; lon: string }>();
 
 export async function fetchWeather(city: string): Promise<WeatherResponse> {
   const response = await fetch(
@@ -89,34 +77,49 @@ export async function fetchWeather(city: string): Promise<WeatherResponse> {
   );
   if (!response.ok) throw new Error("Weather service is not responding");
   const data: WeatherResponse = await response.json();
-
-  // Cache coordinates returned by the API for AQI use
   if (data.coordinates) {
     coordCache.set(city.trim().toLowerCase(), {
       lat: String(data.coordinates.lat),
       lon: String(data.coordinates.lon),
     });
   }
-
   return data;
 }
 
 export async function fetchAqi(city?: string): Promise<AqiResponse> {
   let lat = "31.5204";
   let lon = "74.3587";
-
   if (city) {
-    const coords = getCoordsForCity(city);
-    if (coords) {
-      lat = coords.lat;
-      lon = coords.lon;
-    }
+    const key = city.trim().toLowerCase();
+    const cached = coordCache.get(key);
+    if (cached) { lat = cached.lat; lon = cached.lon; }
   }
-
-  const response = await fetch(
-    `${API_URL}/weather/aqi?lat=${lat}&lon=${lon}`,
-    { cache: "no-store" }
-  );
+  const response = await fetch(`${API_URL}/weather/aqi?lat=${lat}&lon=${lon}`, { cache: "no-store" });
   if (!response.ok) throw new Error("AQI service is not responding");
   return response.json() as Promise<AqiResponse>;
+}
+
+// Live city search using Open-Meteo geocoding (free, no key needed)
+export async function searchCities(query: string): Promise<CitySearchResult[]> {
+  if (!query || query.trim().length < 2) return [];
+  try {
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query.trim())}&count=8&language=en&format=json`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data.results) return [];
+    return (data.results as Array<{
+      name: string; country: string; admin1?: string;
+      latitude: number; longitude: number; country_code: string;
+    }>).map((r) => ({
+      name: r.name,
+      country: r.country,
+      state: r.admin1,
+      lat: r.latitude,
+      lon: r.longitude,
+      displayName: [r.name, r.admin1, r.country].filter(Boolean).join(", "),
+    }));
+  } catch {
+    return [];
+  }
 }

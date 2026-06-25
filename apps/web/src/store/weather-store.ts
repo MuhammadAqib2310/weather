@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 
 type Theme = "dark" | "light";
 type Language = "en" | "ur";
+type TempUnit = "C" | "F";
 
 export type SavedLocation = {
   city: string;
@@ -16,11 +17,13 @@ type WeatherState = {
   city: string;
   theme: Theme;
   language: Language;
+  tempUnit: TempUnit;
   recentSearches: string[];
   favorites: SavedLocation[];
   setCity: (city: string) => void;
   toggleTheme: () => void;
   toggleLanguage: () => void;
+  toggleTempUnit: () => void;
   addRecentSearch: (city: string) => void;
   addFavorite: (location: Omit<SavedLocation, "pinnedAt">) => void;
   removeFavorite: (city: string) => void;
@@ -36,11 +39,13 @@ export const useWeatherStore = create<WeatherState>()(
       city: "Lahore",
       theme: "dark",
       language: "en",
+      tempUnit: "C" as TempUnit,
       recentSearches: ["Lahore", "Karachi", "Islamabad"],
       favorites: [],
       setCity: (city) => set({ city: normalizeCity(city) || "Lahore" }),
       toggleTheme: () => set((state) => ({ theme: state.theme === "dark" ? "light" : "dark" })),
       toggleLanguage: () => set((state) => ({ language: state.language === "en" ? "ur" : "en" })),
+      toggleTempUnit: () => set((state) => ({ tempUnit: state.tempUnit === "C" ? "F" : "C" })),
       addRecentSearch: (city) => {
         const normalized = normalizeCity(city);
         if (!normalized) return;
