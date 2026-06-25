@@ -1,11 +1,1 @@
-﻿node_modules
-.next
-dist
-.env
-.env.local
-.env.production
-coverage
-*.log
-.vercel
-.turbo
-.vercel
+node_modules
